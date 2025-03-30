@@ -1,0 +1,415 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dariacore Music Player</title>
+    <style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: Arial, sans-serif;
+    }
+
+    body {
+        background: linear-gradient(135deg, #1e1e2e, #2a2a3c);
+        color: #f8f8f2;
+        min-height: 100vh;
+        padding: 20px;
+    }
+
+    .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: rgba(0, 0, 0, 0.3);
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+        text-align: center;
+        margin-bottom: 20px;
+        color: #ff79c6;
+        text-shadow: 0 0 5px rgba(255, 121, 198, 0.5);
+    }
+
+    h2 {
+        margin: 15px 0;
+        color: #8be9fd;
+    }
+
+    #loading {
+        text-align: center;
+        font-size: 18px;
+        margin: 30px 0;
+        animation: pulse 1.5s infinite alternate;
+    }
+
+    @keyframes pulse {
+        from {
+            opacity: 0.6;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    #error {
+        background-color: rgba(255, 85, 85, 0.2);
+        color: #ff5555;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+        border: 1px solid #ff5555;
+    }
+
+    #song-list {
+        list-style-type: none;
+    }
+
+    #song-list li {
+        padding: 10px 15px;
+        margin: 5px 0;
+        background-color: rgba(68, 71, 90, 0.5);
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    #song-list li:hover {
+        background-color: rgba(68, 71, 90, 0.8);
+        transform: translateX(5px);
+    }
+
+    #song-list li.active {
+        background-color: rgba(80, 250, 123, 0.2);
+        border-left: 4px solid #50fa7b;
+    }
+
+    .song-thumbnail {
+        width: 40px;
+        height: 40px;
+        border-radius: 3px;
+        color: #ff79c6;
+        margin-right: 10px;
+    }
+
+    .song-info {
+        flex: 1;
+        display: flex;
+        align-items: center;
+    }
+
+    .player-controls {
+        display: flex;
+        justify-content: center;
+        margin: 20px 0;
+        gap: 10px;
+    }
+
+    button {
+        background-color: #6272a4;
+        color: #f8f8f2;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    button:hover {
+        background-color: #8be9fd;
+        color: #282a36;
+    }
+
+    .now-playing {
+        text-align: center;
+        margin: 20px 0;
+        padding: 15px;
+        background-color: rgba(68, 71, 90, 0.3);
+        border-radius: 10px;
+    }
+
+    .keyboard-shortcuts {
+        text-align: center;
+        margin: 15px 0;
+        font-size: 0.9rem;
+        color: #bd93f9;
+    }
+
+    audio {
+        width: 100%;
+        margin-top: 10px;
+        border-radius: 5px;
+    }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dariacore Music Player</h1>
+        <div id="loading">Loading songs...</div>
+        <div id="error" class="hidden"></div>
+        <div id="songs-container" class="hidden">
+            <div class="player-controls">
+                <button id="previous-btn">Previous</button>
+                <button id="play-btn">Play</button>
+                <button id="pause-btn">Pause</button>
+                <button id="next-btn">Next</button>
+            </div>
+            <div class="now-playing">
+                <h2>Now Playing: <span id="current-song-name">Nothing playing</span></h2>
+                <audio id="audio-player" controls></audio>
+            </div>
+            <div class="keyboard-shortcuts">
+                Keyboard controls: Space = Play/Pause | ← = Rewind 5s | → = Forward 5s
+            </div>
+            <h2>Song List</h2>
+            <ul id="song-list"></ul>
+        </div>
+    </div>
+
+    <script>
+    // Configuration
+    const config = {
+        // GitHub repository information
+        repoOwner: 'xD8998',
+        repoName: 'music',
+        repoBranch: 'main',
+        repoPath: 'items1',
+        
+        // File filter (only show files with these extensions)
+        fileExtensions: ['.mp4'],
+        
+        // Player settings
+        autoplay: false,
+        defaultVolume: 0.7
+    };
+
+    // DOM elements
+    const songListEl = document.getElementById('song-list');
+    const audioPlayer = document.getElementById('audio-player');
+    const currentSongNameEl = document.getElementById('current-song-name');
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+    const songsContainerEl = document.getElementById('songs-container');
+    const playBtn = document.getElementById('play-btn');
+    const pauseBtn = document.getElementById('pause-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const previousBtn = document.getElementById('previous-btn');
+
+    // App state
+    let songs = [];
+    let currentSongIndex = -1;
+
+    // Initialize the app
+    async function init() {
+        try {
+            // Fetch files from GitHub repository
+            await fetchSongs();
+            
+            if (songs.length === 0) {
+                showError('No .mp4 files found in the repository');
+                return;
+            }
+
+            // Setup player
+            setupEventListeners();
+            
+            // Set initial volume
+            audioPlayer.volume = config.defaultVolume;
+            
+            // Hide loading message, show player
+            loadingEl.classList.add('hidden');
+            songsContainerEl.classList.remove('hidden');
+            
+        } catch (error) {
+            console.error('Error initializing app:', error);
+            showError('Failed to load songs. Please try again later.');
+        }
+    }
+
+    // Fetch songs from GitHub repository
+    async function fetchSongs() {
+        try {
+            const apiUrl = `https://api.github.com/repos/${config.repoOwner}/${config.repoName}/contents/${config.repoPath}?ref=${config.repoBranch}`;
+            const response = await fetch(apiUrl);
+            
+            if (!response.ok) {
+                throw new Error(`GitHub API error: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            // Filter files by extension
+            songs = data
+                .filter(item => 
+                    item.type === 'file' && 
+                    config.fileExtensions.some(ext => item.name.toLowerCase().endsWith(ext))
+                )
+                .map(item => ({
+                    name: item.name,
+                    url: item.download_url,
+                    path: item.path
+                }));
+                
+            // Render song list
+            renderSongList();
+            
+        } catch (error) {
+            console.error('Error fetching songs:', error);
+            throw error;
+        }
+    }
+
+    // Render the song list
+    function renderSongList() {
+        songListEl.innerHTML = '';
+        
+        songs.forEach((song, index) => {
+            const li = document.createElement('li');
+            
+            // Create thumbnail element with a music icon SVG instead of trying to capture video frame
+            const songInfo = document.createElement('div');
+            songInfo.classList.add('song-info');
+            songInfo.innerHTML = `
+                <svg class="song-thumbnail" viewBox="0 0 24 24">
+                    <path fill="currentColor" d="M12,3V12.26C11.5,12.09 11,12 10.5,12C8.01,12 6,14.01 6,16.5C6,18.99 8.01,21 10.5,21C12.99,21 15,18.99 15,16.5V6H19V3H12Z" />
+                </svg>
+                <span>${song.name}</span>
+            `;
+            
+            li.appendChild(songInfo);
+            li.dataset.index = index;
+            
+            li.addEventListener('click', () => {
+                playSong(index);
+            });
+            
+            if (index === currentSongIndex) {
+                li.classList.add('active');
+            }
+            
+            songListEl.appendChild(li);
+        });
+    }
+
+    // Play a song by index
+    function playSong(index) {
+        if (index < 0 || index >= songs.length) return;
+        
+        const song = songs[index];
+        
+        // Update audio source
+        audioPlayer.src = song.url;
+        
+        // Update UI
+        currentSongNameEl.textContent = song.name;
+        
+        // Play audio
+        audioPlayer.play().catch(error => {
+            console.error('Error playing audio:', error);
+            showError('Failed to play the song. Try again or select another song.');
+        });
+        
+        // Update current song index
+        currentSongIndex = index;
+        
+        // Update active song in list
+        document.querySelectorAll('#song-list li').forEach((li, i) => {
+            if (i === index) {
+                li.classList.add('active');
+            } else {
+                li.classList.remove('active');
+            }
+        });
+    }
+
+    // Play next song
+    function playNextSong() {
+        const nextIndex = (currentSongIndex + 1) % songs.length;
+        playSong(nextIndex);
+    }
+
+    // Play previous song
+    function playPreviousSong() {
+        const prevIndex = (currentSongIndex - 1 + songs.length) % songs.length;
+        playSong(prevIndex);
+    }
+
+    // Set up event listeners
+    function setupEventListeners() {
+        // Play button
+        playBtn.addEventListener('click', () => {
+            if (currentSongIndex === -1 && songs.length > 0) {
+                playSong(0);
+            } else {
+                audioPlayer.play();
+            }
+        });
+        
+        // Pause button
+        pauseBtn.addEventListener('click', () => {
+            audioPlayer.pause();
+        });
+        
+        // Next button
+        nextBtn.addEventListener('click', playNextSong);
+        
+        // Previous button
+        previousBtn.addEventListener('click', playPreviousSong);
+        
+        // When a song ends, play next song
+        audioPlayer.addEventListener('ended', playNextSong);
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            // Prevent default action for these keys to avoid scrolling
+            if (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+                e.preventDefault();
+            }
+            
+            // Space - toggle play/pause
+            if (e.code === 'Space') {
+                if (audioPlayer.paused) {
+                    if (currentSongIndex === -1 && songs.length > 0) {
+                        playSong(0);
+                    } else {
+                        audioPlayer.play();
+                    }
+                } else {
+                    audioPlayer.pause();
+                }
+            }
+            
+            // Left arrow - rewind 5 seconds
+            if (e.code === 'ArrowLeft') {
+                audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 5);
+            }
+            
+            // Right arrow - forward 5 seconds
+            if (e.code === 'ArrowRight') {
+                audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 5);
+            }
+        });
+    }
+
+    // Show error message
+    function showError(message) {
+        errorEl.textContent = message;
+        errorEl.classList.remove('hidden');
+        loadingEl.classList.add('hidden');
+    }
+
+    // Start the app
+    init();
+    </script>
+</body>
+</html>
